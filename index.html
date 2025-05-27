@@ -294,7 +294,7 @@
             <h3>📋 セットアップ手順</h3>
             <p><strong>1.</strong> Googleスプレッドシートを公開設定にする<br>
             <strong>2.</strong> スプレッドシートIDを下記コードの「YOUR_SPREADSHEET_ID」に設定<br>
-            <strong>3.</strong> 列構成: A列=ID, B列=カテゴリ, C列=シチュエーション, D列=管制官無線, F列=音声URL</p>
+            <strong>3.</strong> 列構成: A列=ID, B列=カテゴリ, C列=使用滑走路, D列=シチュエーション, E列=管制官無線, F列=音声URL</p>
         </div>
     </div>
 
@@ -330,8 +330,9 @@
                         scenarioData.push({
                             id: row.c[0]?.v || '',
                             category: row.c[1]?.v || '',
-                            situation: row.c[2]?.v || '',
-                            transmission: row.c[3]?.v || '',
+                            runway: row.c[2]?.v || '',
+                            situation: row.c[3]?.v || '',
+                            transmission: row.c[4]?.v || '',
                             audioUrl: row.c[5]?.v || '' // F列（インデックス5）
                         });
                     }
@@ -383,16 +384,17 @@
                         <div class="scenario-id">ID: ${scenario.id}</div>
                         <div class="category">${scenario.category}</div>
                     </div>
+                                        
+                    <div class="info-section">
+    <div class="info-label">🛫 使用滑走路</div>
+    <div class="info-content">${scenario.runway}</div>
+</div>
                     
                     <div class="info-section">
                         <div class="info-label">📍 シチュエーション</div>
                         <div class="info-content">${scenario.situation}</div>
                     </div>
-                    
-                    <div class="info-section">
-                        <div class="info-label">📻 管制官無線</div>
-                        <div class="info-content">${scenario.transmission}</div>
-                    </div>
+
                     
                     ${audioSection}
                 </div>
