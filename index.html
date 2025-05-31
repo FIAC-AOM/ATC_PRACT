@@ -333,7 +333,12 @@
         function convertDropboxUrl(url) {
             if (!url) return '';
             
-            // Dropboxの共有URLの場合（dl=0 を dl=1 に変換）
+            // 新しいDropbox共有URL形式（/scl/fi/形式）の場合
+            if (url.includes('dropbox.com/scl/fi/') && url.includes('dl=0')) {
+                return url.replace('dl=0', 'dl=1');
+            }
+            
+            // 従来のDropbox共有URL形式の場合
             if (url.includes('dropbox.com') && url.includes('dl=0')) {
                 return url.replace('dl=0', 'dl=1');
             }
@@ -348,7 +353,7 @@
             return url;
         }
 
-        // 音声ファイルのテスト（より寛容なテスト）
+        // 音声ファイルのテスト（Dropbox用に最適化）
         function testAudioUrl(url) {
             return new Promise((resolve) => {
                 const audio = new Audio();
@@ -365,15 +370,28 @@
                 audio.addEventListener('canplaythrough', () => resolveOnce(true));
                 audio.addEventListener('canplay', () => resolveOnce(true));
                 audio.addEventListener('loadeddata', () => resolveOnce(true));
+                audio.addEventListener('loadedmetadata', () => resolveOnce(true));
                 
                 // エラーイベント
-                audio.addEventListener('error', () => resolveOnce(false));
+                audio.addEventListener('error', (e) => {
+                    console.warn('Audio load error:', e);
+                    resolveOnce(false);
+                });
                 
-                // タイムアウト（5秒）
-                setTimeout(() => resolveOnce(false), 5000);
+                // タイムアウト（10秒に延長）
+                setTimeout(() => {
+                    console.warn('Audio load timeout for:', url);
+                    resolveOnce(false);
+                }, 10000);
                 
-                // CORS エラーを回避するため
-                audio.crossOrigin = "anonymous";
+                // Dropboxファイルの場合はCORSを無効化
+                if (url.includes('dropbox.com')) {
+                    // CORSエラーを避けるため、crossOriginを設定しない
+                    audio.preload = 'metadata';
+                } else {
+                    audio.crossOrigin = "anonymous";
+                }
+                
                 audio.src = url;
             });
         }
@@ -452,7 +470,7 @@
                     audioSection = `
                         <div class="audio-section">
                             <div class="info-label">🔊 音声ファイル</div>
-                            <audio class="audio-player" controls preload="metadata" crossorigin="anonymous">
+                            <audio class="audio-player" controls preload="metadata">
                                 <source src="${scenario.audioUrl}" type="audio/mpeg">
                                 <source src="${scenario.audioUrl}" type="audio/wav">
                                 <source src="${scenario.audioUrl}" type="audio/ogg">
@@ -467,21 +485,21 @@
                             <div class="info-label">🔊 音声ファイル</div>
                             <div class="audio-error">
                                 ⚠️ 音声ファイルを自動読み込みできませんでした。<br>
-                                下記リンクから直接アクセスしてください。
+                                プレーヤーで直接再生を試すか、リンクから新しいタブで開いてください。
                             </div>
-                            <div class="audio-debug">
-                                デバッグ情報:<br>
-                                元のURL: ${scenario.originalAudioUrl}<br>
-                                変換後URL: ${scenario.audioUrl}
-                            </div>
-                            <div><a href="${scenario.audioUrl}" target="_blank" class="audio-link">音声ファイルを新しいタブで開く（直接ダウンロード）</a></div>
-                            <audio class="audio-player" controls preload="none" crossorigin="anonymous">
+                            <audio class="audio-player" controls preload="none">
                                 <source src="${scenario.audioUrl}" type="audio/mpeg">
                                 <source src="${scenario.audioUrl}" type="audio/wav">
                                 <source src="${scenario.audioUrl}" type="audio/ogg">
                                 <source src="${scenario.audioUrl}" type="audio/mp4">
                                 お使いのブラウザは音声再生に対応していません。
                             </audio>
+                            <div><a href="${scenario.audioUrl}" target="_blank" class="audio-link">音声ファイルを新しいタブで開く（直接ダウンロード）</a></div>
+                            <div class="audio-debug">
+                                デバッグ情報:<br>
+                                元のURL: ${scenario.originalAudioUrl}<br>
+                                変換後URL: ${scenario.audioUrl}
+                            </div>
                         </div>`;
                 }
             }
