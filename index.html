@@ -62,6 +62,57 @@
             font-size: 1.1rem;
         }
 
+        .filter-section {
+            background: #f8f9ff;
+            border-radius: 15px;
+            padding: 20px;
+            margin: 20px 0;
+            border: 2px solid #e3f2fd;
+            text-align: center;
+        }
+
+        .filter-label {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 1.1rem;
+        }
+
+        .category-select {
+            background: white;
+            border: 2px solid #667eea;
+            border-radius: 10px;
+            padding: 12px 20px;
+            font-size: 1rem;
+            color: #333;
+            min-width: 200px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            appearance: none;
+            background-image: url('data:image/svg+xml;charset=US-ASCII,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 5"><path fill="%23667eea" d="M2 0L0 2h4zm0 5L0 3h4z"/></svg>');
+            background-repeat: no-repeat;
+            background-position: right 15px center;
+            background-size: 12px;
+            padding-right: 40px;
+        }
+
+        .category-select:hover {
+            border-color: #764ba2;
+            box-shadow: 0 0 10px rgba(102, 126, 234, 0.2);
+        }
+
+        .category-select:focus {
+            outline: none;
+            border-color: #764ba2;
+            box-shadow: 0 0 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .filter-info {
+            margin-top: 10px;
+            color: #666;
+            font-size: 0.9rem;
+        }
+
         .loading {
             text-align: center;
             padding: 40px;
@@ -254,6 +305,16 @@
             margin-bottom: 10px;
         }
 
+        .no-scenarios {
+            background: #fff3e0;
+            border: 1px solid #ffb74d;
+            color: #f57c00;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            margin: 20px 0;
+        }
+
         @media (max-width: 768px) {
             .container {
                 padding: 20px;
@@ -277,6 +338,10 @@
             .btn {
                 width: 200px;
             }
+
+            .category-select {
+                min-width: 150px;
+            }
         }
     </style>
 </head>
@@ -294,6 +359,16 @@
         </div>
 
         <div id="content" style="display: none;">
+            <div class="filter-section">
+                <div class="filter-label">🎯 練習カテゴリ</div>
+                <select id="category-select" class="category-select" onchange="onCategoryChange()">
+                    <option value="すべて">すべて</option>
+                </select>
+                <div class="filter-info" id="filter-info">
+                    全てのカテゴリからランダムに出題されます
+                </div>
+            </div>
+
             <div id="scenario-container"></div>
             
             <div class="button-group">
@@ -319,6 +394,12 @@
             <strong>4.</strong> 音声ファイルはDropboxで共有設定し、共有リンクをスプレッドシートに記載してください<br>
             <strong>5.</strong> Dropboxの共有URLは自動的に直接再生可能URLに変換されます</p>
         </div>
+
+        <div id="no-scenarios" style="display: none;" class="no-scenarios">
+            <h3>📝 該当するシナリオがありません</h3>
+            <p>選択されたカテゴリに該当するシナリオが見つかりませんでした。<br>
+            別のカテゴリを選択するか、「すべて」を選択してください。</p>
+        </div>
     </div>
 
     <script>
@@ -328,6 +409,8 @@
         
         let scenarioData = [];
         let currentScenario = null;
+        let selectedCategory = 'すべて';
+        let availableCategories = [];
 
         // DropboxのURLを直接再生可能URLに変換
         function convertDropboxUrl(url) {
@@ -393,6 +476,59 @@
             });
         }
 
+        // カテゴリ選択が変更された時の処理
+        function onCategoryChange() {
+            const select = document.getElementById('category-select');
+            selectedCategory = select.value;
+            updateFilterInfo();
+            
+            // 新しいカテゴリでランダムシナリオを表示
+            loadRandomScenario();
+        }
+
+        // フィルター情報の更新
+        function updateFilterInfo() {
+            const filterInfo = document.getElementById('filter-info');
+            const filteredScenarios = getFilteredScenarios();
+            
+            if (selectedCategory === 'すべて') {
+                filterInfo.textContent = `全てのカテゴリからランダムに出題されます（${scenarioData.length}件）`;
+            } else {
+                filterInfo.textContent = `「${selectedCategory}」カテゴリから出題されます（${filteredScenarios.length}件）`;
+            }
+        }
+
+        // カテゴリに基づいてフィルタリングされたシナリオを取得
+        function getFilteredScenarios() {
+            if (selectedCategory === 'すべて') {
+                return scenarioData;
+            }
+            return scenarioData.filter(scenario => scenario.category === selectedCategory);
+        }
+
+        // カテゴリ選択肢を更新
+        function updateCategoryOptions() {
+            const select = document.getElementById('category-select');
+            
+            // 既存の選択肢をクリア（「すべて」以外）
+            while (select.children.length > 1) {
+                select.removeChild(select.lastChild);
+            }
+            
+            // カテゴリ一覧を取得
+            availableCategories = [...new Set(scenarioData.map(s => s.category))].sort();
+            
+            // カテゴリ選択肢を追加
+            availableCategories.forEach(category => {
+                if (category) { // 空でないカテゴリのみ
+                    const option = document.createElement('option');
+                    option.value = category;
+                    option.textContent = category;
+                    select.appendChild(option);
+                }
+            });
+        }
+
         // スプレッドシートデータを取得
         async function loadSpreadsheetData() {
             try {
@@ -433,6 +569,12 @@
                     throw new Error('有効なデータが見つかりませんでした');
                 }
                 
+                // カテゴリ選択肢を更新
+                updateCategoryOptions();
+                
+                // フィルター情報を更新
+                updateFilterInfo();
+                
                 // 最初のランダムシナリオを表示
                 loadRandomScenario();
                 
@@ -444,18 +586,29 @@
 
         // ランダムシナリオを選択して表示
         function loadRandomScenario() {
-            if (scenarioData.length === 0) {
-                showError('利用可能なシナリオがありません');
+            const filteredScenarios = getFilteredScenarios();
+            
+            if (filteredScenarios.length === 0) {
+                showNoScenarios();
                 return;
             }
 
-            const randomIndex = Math.floor(Math.random() * scenarioData.length);
-            currentScenario = scenarioData[randomIndex];
+            const randomIndex = Math.floor(Math.random() * filteredScenarios.length);
+            currentScenario = filteredScenarios[randomIndex];
             displayScenario(currentScenario);
+        }
+
+        // 該当シナリオなしの表示
+        function showNoScenarios() {
+            document.getElementById('scenario-container').innerHTML = '';
+            document.getElementById('no-scenarios').style.display = 'block';
         }
 
         // シナリオを表示（高速化版）
         async function displayScenario(scenario) {
+            // 該当シナリオなし表示を隠す
+            document.getElementById('no-scenarios').style.display = 'none';
+            
             const container = document.getElementById('scenario-container');
             
             // 先にUIを表示（音声テストは並行実行）
