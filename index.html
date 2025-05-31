@@ -353,9 +353,15 @@
             return url;
         }
 
-        // 音声ファイルのテスト（Dropbox用に最適化）
-        function testAudioUrl(url) {
+        // 音声ファイルの簡易テスト（高速化版）
+        function quickTestAudioUrl(url) {
             return new Promise((resolve) => {
+                // Dropboxファイルの場合は基本的にOKとして扱う（dl=1の場合）
+                if (url.includes('dropbox.com') && url.includes('dl=1')) {
+                    resolve(true);
+                    return;
+                }
+                
                 const audio = new Audio();
                 let resolved = false;
                 
@@ -366,11 +372,9 @@
                     }
                 };
                 
-                // 成功イベント
-                audio.addEventListener('canplaythrough', () => resolveOnce(true));
-                audio.addEventListener('canplay', () => resolveOnce(true));
-                audio.addEventListener('loadeddata', () => resolveOnce(true));
+                // 最初のメタデータ読み込みで判定
                 audio.addEventListener('loadedmetadata', () => resolveOnce(true));
+                audio.addEventListener('canplay', () => resolveOnce(true));
                 
                 // エラーイベント
                 audio.addEventListener('error', (e) => {
@@ -378,20 +382,13 @@
                     resolveOnce(false);
                 });
                 
-                // タイムアウト（10秒に延長）
+                // タイムアウト（1秒に短縮）
                 setTimeout(() => {
                     console.warn('Audio load timeout for:', url);
                     resolveOnce(false);
-                }, 10000);
+                }, 1000);
                 
-                // Dropboxファイルの場合はCORSを無効化
-                if (url.includes('dropbox.com')) {
-                    // CORSエラーを避けるため、crossOriginを設定しない
-                    audio.preload = 'metadata';
-                } else {
-                    audio.crossOrigin = "anonymous";
-                }
-                
+                audio.preload = 'metadata';
                 audio.src = url;
             });
         }
@@ -457,53 +454,34 @@
             displayScenario(currentScenario);
         }
 
-        // シナリオを表示
+        // シナリオを表示（高速化版）
         async function displayScenario(scenario) {
             const container = document.getElementById('scenario-container');
             
+            // 先にUIを表示（音声テストは並行実行）
             let audioSection = '';
             if (scenario.audioUrl) {
-                // 音声URLをテスト
-                const canPlay = await testAudioUrl(scenario.audioUrl);
-                
-                if (canPlay) {
-                    audioSection = `
-                        <div class="audio-section">
-                            <div class="info-label">🔊 音声ファイル</div>
-                            <audio class="audio-player" controls preload="metadata">
-                                <source src="${scenario.audioUrl}" type="audio/mpeg">
-                                <source src="${scenario.audioUrl}" type="audio/wav">
-                                <source src="${scenario.audioUrl}" type="audio/ogg">
-                                <source src="${scenario.audioUrl}" type="audio/mp4">
-                                お使いのブラウザは音声再生に対応していません。
-                            </audio>
-                            <div><a href="${scenario.audioUrl}" target="_blank" class="audio-link">音声ファイルを新しいタブで開く</a></div>
-                        </div>`;
-                } else {
-                    audioSection = `
-                        <div class="audio-section">
-                            <div class="info-label">🔊 音声ファイル</div>
-                            <div class="audio-error">
-                                ⚠️ 音声ファイルを自動読み込みできませんでした。<br>
-                                プレーヤーで直接再生を試すか、リンクから新しいタブで開いてください。
-                            </div>
-                            <audio class="audio-player" controls preload="none">
-                                <source src="${scenario.audioUrl}" type="audio/mpeg">
-                                <source src="${scenario.audioUrl}" type="audio/wav">
-                                <source src="${scenario.audioUrl}" type="audio/ogg">
-                                <source src="${scenario.audioUrl}" type="audio/mp4">
-                                お使いのブラウザは音声再生に対応していません。
-                            </audio>
-                            <div><a href="${scenario.audioUrl}" target="_blank" class="audio-link">音声ファイルを新しいタブで開く（直接ダウンロード）</a></div>
-                            <div class="audio-debug">
-                                デバッグ情報:<br>
-                                元のURL: ${scenario.originalAudioUrl}<br>
-                                変換後URL: ${scenario.audioUrl}
-                            </div>
-                        </div>`;
-                }
+                // 音声プレーヤーを先に表示
+                audioSection = `
+                    <div class="audio-section">
+                        <div class="info-label">🔊 音声ファイル <span id="audio-status-${scenario.id}" style="font-size: 0.8em; color: #666;">テスト中...</span></div>
+                        <audio class="audio-player" controls preload="metadata">
+                            <source src="${scenario.audioUrl}" type="audio/mpeg">
+                            <source src="${scenario.audioUrl}" type="audio/wav">
+                            <source src="${scenario.audioUrl}" type="audio/ogg">
+                            <source src="${scenario.audioUrl}" type="audio/mp4">
+                            お使いのブラウザは音声再生に対応していません。
+                        </audio>
+                        <div><a href="${scenario.audioUrl}" target="_blank" class="audio-link">音声ファイルを新しいタブで開く</a></div>
+                        <div class="audio-debug" style="display: none;" id="debug-${scenario.id}">
+                            デバッグ情報:<br>
+                            元のURL: ${scenario.originalAudioUrl}<br>
+                            変換後URL: ${scenario.audioUrl}
+                        </div>
+                    </div>`;
             }
 
+            // UIを即座に表示
             container.innerHTML = `
                 <div class="scenario-card">
                     <div class="scenario-header">
@@ -528,6 +506,34 @@
             // コンテンツを表示し、ローディングを隠す
             document.getElementById('loading').style.display = 'none';
             document.getElementById('content').style.display = 'block';
+            
+            // 音声テストを並行実行（UIブロックしない）
+            if (scenario.audioUrl) {
+                quickTestAudioUrl(scenario.audioUrl).then(canPlay => {
+                    const statusElement = document.getElementById(`audio-status-${scenario.id}`);
+                    const debugElement = document.getElementById(`debug-${scenario.id}`);
+                    
+                    if (statusElement) {
+                        if (canPlay) {
+                            statusElement.textContent = '✓ 準備完了';
+                            statusElement.style.color = '#4caf50';
+                        } else {
+                            statusElement.textContent = '⚠ 手動再生推奨';
+                            statusElement.style.color = '#ff9800';
+                            if (debugElement) {
+                                debugElement.style.display = 'block';
+                            }
+                        }
+                    }
+                }).catch(error => {
+                    console.warn('Audio test failed:', error);
+                    const statusElement = document.getElementById(`audio-status-${scenario.id}`);
+                    if (statusElement) {
+                        statusElement.textContent = '⚠ 手動再生推奨';
+                        statusElement.style.color = '#ff9800';
+                    }
+                });
+            }
         }
 
         // エラー表示
