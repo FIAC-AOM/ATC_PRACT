@@ -162,7 +162,6 @@
             color: #667eea;
             text-decoration: none;
             font-weight: 500;
-            margin: 0 10px;
         }
 
         .audio-link:hover {
@@ -173,16 +172,6 @@
             background: #ffebee;
             border: 1px solid #ffcdd2;
             color: #c62828;
-            padding: 15px;
-            border-radius: 8px;
-            margin: 10px 0;
-            font-size: 0.9rem;
-        }
-
-        .audio-warning {
-            background: #fff3e0;
-            border: 1px solid #ffcc02;
-            color: #e65100;
             padding: 15px;
             border-radius: 8px;
             margin: 10px 0;
@@ -265,16 +254,6 @@
             margin-bottom: 10px;
         }
 
-        .url-formats {
-            background: #e8f5e8;
-            border: 1px solid #4caf50;
-            color: #2e7d32;
-            padding: 15px;
-            border-radius: 10px;
-            margin: 10px 0;
-            font-size: 0.9rem;
-        }
-
         @media (max-width: 768px) {
             .container {
                 padding: 20px;
@@ -333,19 +312,12 @@
         </div>
 
         <div class="setup-info">
-            <h3>📋 音声ファイル設定手順</h3>
-            <p><strong>1.</strong> Googleドライブに音声ファイルをアップロード<br>
-            <strong>2.</strong> ファイルを右クリック → 「共有」を選択<br>
-            <strong>3.</strong> 「制限付き」を「リンクを知っている全員」に変更<br>
-            <strong>4.</strong> 「リンクをコピー」でURLを取得<br>
-            <strong>5.</strong> スプレッドシートの音声URL列にペースト</p>
-            
-            <div class="url-formats">
-                <strong>📝 使用可能なURL形式:</strong><br>
-                • https://drive.google.com/file/d/FILE_ID/view?usp=sharing<br>
-                • https://drive.google.com/open?id=FILE_ID<br>
-                • 直接音声ファイルURL (.mp3, .wav, .ogg)
-            </div>
+            <h3>📋 セットアップ手順</h3>
+            <p><strong>1.</strong> Googleスプレッドシートを公開設定にする<br>
+            <strong>2.</strong> スプレッドシートIDを下記コードの「YOUR_SPREADSHEET_ID」に設定<br>
+            <strong>3.</strong> 列構成: A列=ID, B列=カテゴリ, C列=使用滑走路, D列=シチュエーション, E列=管制官無線, F列=音声URL<br>
+            <strong>4.</strong> 音声ファイルはDropboxで共有設定し、共有リンクをスプレッドシートに記載してください<br>
+            <strong>5.</strong> Dropboxの共有URLは自動的に直接再生可能URLに変換されます</p>
         </div>
     </div>
 
@@ -357,70 +329,51 @@
         let scenarioData = [];
         let currentScenario = null;
 
-        // GoogleドライブのURLを複数の形式で変換を試行
-        function convertGoogleDriveUrl(url) {
+        // DropboxのURLを直接再生可能URLに変換
+        function convertDropboxUrl(url) {
             if (!url) return '';
             
+            // Dropboxの共有URLの場合（dl=0 を dl=1 に変換）
+            if (url.includes('dropbox.com') && url.includes('dl=0')) {
+                return url.replace('dl=0', 'dl=1');
+            }
+            
+            // Dropboxの短縮URLの場合
+            if (url.includes('dropbox.com') && !url.includes('dl=')) {
+                // URLの末尾に?dl=1を追加
+                return url + (url.includes('?') ? '&dl=1' : '?dl=1');
+            }
+            
             // 既に直接URLの場合はそのまま返す
-            if (url.includes('.mp3') || url.includes('.wav') || url.includes('.ogg')) {
-                return url;
-            }
-            
-            // Googleドライブの共有URLの場合
-            const driveRegex = /(?:https?:\/\/)?(?:www\.)?drive\.google\.com\/(?:file\/d\/|open\?id=)([a-zA-Z0-9-_]+)/;
-            const match = url.match(driveRegex);
-            
-            if (match) {
-                const fileId = match[1];
-                // 複数の変換パターンを返す
-                return {
-                    download: `https://drive.google.com/uc?export=download&id=${fileId}`,
-                    preview: `https://drive.google.com/uc?id=${fileId}`,
-                    embed: `https://drive.google.com/file/d/${fileId}/preview`
-                };
-            }
-            
             return url;
         }
 
-        // 音声ファイルのテスト（複数URL形式を試行）
-        async function testAudioUrl(urlOrObject) {
-            if (typeof urlOrObject === 'string') {
-                return await testSingleAudioUrl(urlOrObject);
-            }
-            
-            // オブジェクトの場合、複数のURLを順番に試行
-            const urls = [urlOrObject.download, urlOrObject.preview, urlOrObject.embed];
-            
-            for (const url of urls) {
-                const result = await testSingleAudioUrl(url);
-                if (result.canPlay) {
-                    return { canPlay: true, workingUrl: url, testedUrl: url };
-                }
-            }
-            
-            return { canPlay: false, workingUrl: null, testedUrl: urls[0] };
-        }
-
-        function testSingleAudioUrl(url) {
+        // 音声ファイルのテスト（より寛容なテスト）
+        function testAudioUrl(url) {
             return new Promise((resolve) => {
                 const audio = new Audio();
-                const timeout = setTimeout(() => {
-                    audio.src = '';
-                    resolve({ canPlay: false, workingUrl: null, testedUrl: url });
-                }, 5000); // 5秒でタイムアウト
-
-                audio.addEventListener('canplaythrough', () => {
-                    clearTimeout(timeout);
-                    resolve({ canPlay: true, workingUrl: url, testedUrl: url });
-                });
+                let resolved = false;
                 
-                audio.addEventListener('error', (e) => {
-                    clearTimeout(timeout);
-                    resolve({ canPlay: false, workingUrl: null, testedUrl: url, error: e.message });
-                });
+                const resolveOnce = (result) => {
+                    if (!resolved) {
+                        resolved = true;
+                        resolve(result);
+                    }
+                };
                 
-                audio.preload = 'metadata';
+                // 成功イベント
+                audio.addEventListener('canplaythrough', () => resolveOnce(true));
+                audio.addEventListener('canplay', () => resolveOnce(true));
+                audio.addEventListener('loadeddata', () => resolveOnce(true));
+                
+                // エラーイベント
+                audio.addEventListener('error', () => resolveOnce(false));
+                
+                // タイムアウト（5秒）
+                setTimeout(() => resolveOnce(false), 5000);
+                
+                // CORS エラーを回避するため
+                audio.crossOrigin = "anonymous";
                 audio.src = url;
             });
         }
@@ -447,7 +400,7 @@
                     const row = rows[i];
                     if (row.c && row.c[0] && row.c[0].v) { // IDが存在する行のみ
                         const rawAudioUrl = row.c[5]?.v || '';
-                        const convertedAudioUrl = convertGoogleDriveUrl(rawAudioUrl);
+                        const convertedAudioUrl = convertDropboxUrl(rawAudioUrl);
                         
                         scenarioData.push({
                             id: row.c[0]?.v || '',
@@ -493,48 +446,42 @@
             let audioSection = '';
             if (scenario.audioUrl) {
                 // 音声URLをテスト
-                const audioResult = await testAudioUrl(scenario.audioUrl);
+                const canPlay = await testAudioUrl(scenario.audioUrl);
                 
-                if (audioResult.canPlay) {
+                if (canPlay) {
                     audioSection = `
                         <div class="audio-section">
                             <div class="info-label">🔊 音声ファイル</div>
-                            <audio class="audio-player" controls preload="metadata">
-                                <source src="${audioResult.workingUrl}" type="audio/mpeg">
-                                <source src="${audioResult.workingUrl}" type="audio/wav">
-                                <source src="${audioResult.workingUrl}" type="audio/ogg">
+                            <audio class="audio-player" controls preload="metadata" crossorigin="anonymous">
+                                <source src="${scenario.audioUrl}" type="audio/mpeg">
+                                <source src="${scenario.audioUrl}" type="audio/wav">
+                                <source src="${scenario.audioUrl}" type="audio/ogg">
+                                <source src="${scenario.audioUrl}" type="audio/mp4">
                                 お使いのブラウザは音声再生に対応していません。
                             </audio>
-                            <div>
-                                <a href="${audioResult.workingUrl}" target="_blank" class="audio-link">音声ファイルを新しいタブで開く</a>
-                                <a href="${scenario.originalAudioUrl}" target="_blank" class="audio-link">元のファイルを開く</a>
-                            </div>
+                            <div><a href="${scenario.audioUrl}" target="_blank" class="audio-link">音声ファイルを新しいタブで開く</a></div>
                         </div>`;
                 } else {
-                    const debugInfo = typeof scenario.audioUrl === 'object' 
-                        ? `試行したURL:<br>
-                           1. ${scenario.audioUrl.download}<br>
-                           2. ${scenario.audioUrl.preview}<br>
-                           3. ${scenario.audioUrl.embed}`
-                        : `変換後URL: ${scenario.audioUrl}`;
-
                     audioSection = `
                         <div class="audio-section">
                             <div class="info-label">🔊 音声ファイル</div>
-                            <div class="audio-warning">
-                                ⚠️ 音声ファイルの自動再生ができませんでした。<br>
+                            <div class="audio-error">
+                                ⚠️ 音声ファイルを自動読み込みできませんでした。<br>
                                 下記リンクから直接アクセスしてください。
                             </div>
                             <div class="audio-debug">
                                 デバッグ情報:<br>
                                 元のURL: ${scenario.originalAudioUrl}<br>
-                                ${debugInfo}
+                                変換後URL: ${scenario.audioUrl}
                             </div>
-                            <div>
-                                <a href="${typeof scenario.audioUrl === 'object' ? scenario.audioUrl.download : scenario.audioUrl}" target="_blank" class="audio-link">ダウンロードリンク</a>
-                                <a href="${scenario.originalAudioUrl}" target="_blank" class="audio-link">元のファイル</a>
-                                ${typeof scenario.audioUrl === 'object' ? `<a href="${scenario.audioUrl.preview}" target="_blank" class="audio-link">プレビュー</a>` : ''}
-                            </div>
+                            <div><a href="${scenario.audioUrl}" target="_blank" class="audio-link">音声ファイルを新しいタブで開く（直接ダウンロード）</a></div>
+                            <audio class="audio-player" controls preload="none" crossorigin="anonymous">
+                                <source src="${scenario.audioUrl}" type="audio/mpeg">
+                                <source src="${scenario.audioUrl}" type="audio/wav">
+                                <source src="${scenario.audioUrl}" type="audio/ogg">
+                                <source src="${scenario.audioUrl}" type="audio/mp4">
+                                お使いのブラウザは音声再生に対応していません。
+                            </audio>
                         </div>`;
                 }
             }
